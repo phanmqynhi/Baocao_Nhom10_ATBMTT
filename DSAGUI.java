@@ -966,6 +966,9 @@ public class DSAGUI extends JFrame {
             ActionEvent ev = new ActionEvent(this, ActionEvent.ACTION_PERFORMED, selected?"ON":"OFF");
             listeners.forEach(l -> l.actionPerformed(ev));
         }
+        public void test(){
+
+        }
         void setSelected(boolean s) { selected = s; repaint(); }
         boolean isSelected() { return selected; }
         @Override protected void paintComponent(Graphics g) {
