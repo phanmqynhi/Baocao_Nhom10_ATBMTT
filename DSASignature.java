@@ -1,4 +1,6 @@
 import java.math.BigInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Lớp đại diện cho một chữ ký DSA
@@ -36,14 +38,15 @@ public class DSASignature {
      */
     public static DSASignature deserialize(String text) {
         try {
-            String[] lines = text.trim().split("\\s+");
+            String normalized = text.replace("\r\n", "\n").replace('\r', '\n');
             BigInteger rVal = null, sVal = null;
-            for (String line : lines) {
-                line = line.trim();
-                if (line.startsWith("r=") || line.startsWith("R="))
-                    rVal = new BigInteger(line.substring(2), 16);
-                else if (line.startsWith("s=") || line.startsWith("S="))
-                    sVal = new BigInteger(line.substring(2), 16);
+            Pattern pattern = Pattern.compile("(?i)\\b(r|s)\\s*=\\s*([0-9A-Fa-f]+)");
+            Matcher matcher = pattern.matcher(normalized);
+            while (matcher.find()) {
+                String key = matcher.group(1).toLowerCase();
+                String value = matcher.group(2);
+                if (key.equals("r")) rVal = new BigInteger(value, 16);
+                else if (key.equals("s")) sVal = new BigInteger(value, 16);
             }
             if (rVal == null || sVal == null)
                 throw new IllegalArgumentException("Định dạng chữ ký không hợp lệ (cần r= và s=)");

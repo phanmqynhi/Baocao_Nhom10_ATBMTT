@@ -191,6 +191,7 @@ public class DSAMain {
         System.out.println();
         SwingUtilities.invokeLater(() -> {
             try {
+                new DSAGUI();
                 System.out.println("[GUI] Giao diện DSA đã được khởi chạy thành công!");
             } catch (Exception e) {
                 System.err.println("[LỖI] Không thể khởi chạy giao diện:");

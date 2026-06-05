@@ -1,14 +1,19 @@
 import javax.swing.*;
+import javax.swing.border.TitledBorder;
 import javax.swing.plaf.basic.BasicScrollBarUI;
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.geom.*;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Giao diện GUI cho thuật toán DSA – thiết kế theo phong cách Security-Tech.
@@ -67,7 +72,7 @@ public class DSAGUI extends JFrame {
     // ─── Theme-dependent colours ─────────────────────────────────────────────────
     private Color APP_BG, PANEL_BG, CARD_BG, CARD_BORDER;
     private Color TEXT, MUTED, HEADER_BG1, HEADER_BG2;
-    private Color TITLE_CLR, SUBTITLE_CLR;
+    private Color TITLE_CLR, SUBTITLE_CLR, SCROLLBAR_CLR;
 
     // ════════════════════════════════════════════════════════════════════════════
     public DSAGUI() {
@@ -95,6 +100,7 @@ public class DSAGUI extends JFrame {
             HEADER_BG2  = new Color( 30,  40,  70);
             TITLE_CLR   = new Color(200, 215, 255);
             SUBTITLE_CLR= new Color(130, 148, 195);
+            SCROLLBAR_CLR = new Color( 70,  80,  95);
         } else {
             APP_BG      = new Color(242, 244, 250);
             PANEL_BG    = new Color(252, 253, 255);
@@ -106,6 +112,7 @@ public class DSAGUI extends JFrame {
             HEADER_BG2  = new Color(215, 228, 255);
             TITLE_CLR   = new Color( 25,  40,  90);
             SUBTITLE_CLR= new Color( 70,  95, 150);
+            SCROLLBAR_CLR = new Color(190, 198, 210);
         }
     }
 
@@ -541,11 +548,7 @@ public class DSAGUI extends JFrame {
 
                 SwingUtilities.invokeLater(() -> {
                     hashDisplay.setText("SHA-256(M) =\n" + hexWrap(hashVal));
-                    signatureDisplay.setText(
-                        "=== CHỮ KÝ DSA ===\n" +
-                        "r =\n" + hexWrap(sig.getR()) +
-                        "\n\ns =\n" + hexWrap(sig.getS())
-                    );
+                    signatureDisplay.setText("=== CHỮ KÝ DSA ===\n" + sig.serialize());
 
                     // Cập nhật tab xác minh
                     verifyMessageInput  .setText(msg);
@@ -644,7 +647,8 @@ public class DSAGUI extends JFrame {
                     "g=\n"    + hexWrap(params.getG())               + "\n\n" +
                     "x (private key)=\n" + hexWrap(currentKeyPair.getPrivateKey()) + "\n\n" +
                     "y (public key)=\n"  + hexWrap(currentKeyPair.getPublicKey())  + "\n";
-                Files.writeString(fc.getSelectedFile().toPath(), content);
+                Path file = fc.getSelectedFile().toPath();
+                Files.writeString(file, content, StandardCharsets.UTF_8);
                 JOptionPane.showMessageDialog(this,
                     "Đã lưu khóa thành công!", "Thành công", JOptionPane.INFORMATION_MESSAGE);
             } catch (IOException ex) {
@@ -658,7 +662,8 @@ public class DSAGUI extends JFrame {
         JFileChooser fc = new JFileChooser();
         if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             try {
-                String text = Files.readString(fc.getSelectedFile().toPath());
+                Path file = fc.getSelectedFile().toPath();
+                String text = Files.readString(file, StandardCharsets.UTF_8);
                 area.setText(text);
             } catch (IOException ex) {
                 JOptionPane.showMessageDialog(this,
@@ -677,7 +682,8 @@ public class DSAGUI extends JFrame {
         fc.setSelectedFile(new java.io.File(defaultName));
         if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
             try {
-                Files.writeString(fc.getSelectedFile().toPath(), area.getText());
+                Path file = fc.getSelectedFile().toPath();
+                Files.writeString(file, area.getText(), StandardCharsets.UTF_8);
                 JOptionPane.showMessageDialog(this,
                     "Đã lưu thành công!", "Thành công", JOptionPane.INFORMATION_MESSAGE);
             } catch (IOException ex) {
@@ -811,7 +817,7 @@ public class DSAGUI extends JFrame {
 
     private void styleScrollBar(JScrollPane sp) {
         sp.getVerticalScrollBar().setPreferredSize(new Dimension(8, 0));
-        sp.getVerticalScrollBar().setUI(new ThinScrollBarUI());
+        sp.getVerticalScrollBar().setUI(new ThinScrollBarUI(SCROLLBAR_CLR));
         sp.getVerticalScrollBar().setBackground(CARD_BG);
     }
 
@@ -934,14 +940,18 @@ public class DSAGUI extends JFrame {
         }
     }
 
-    static class ThinScrollBarUI extends BasicScrollBarUI {
+    class ThinScrollBarUI extends BasicScrollBarUI {
+        private final Color thumb;
+        ThinScrollBarUI(Color thumb) { this.thumb = thumb; }
         @Override protected void configureScrollBarColors() {
-            thumbColor = new Color(150, 160, 175); trackColor = new Color(0,0,0,0); }
+            thumbColor = thumb;
+            trackColor = new Color(0,0,0,0);
+        }
         @Override protected JButton createDecreaseButton(int o) { return zero(); }
         @Override protected JButton createIncreaseButton(int o) { return zero(); }
-        private JButton zero() { JButton b=new JButton(); b.setPreferredSize(new Dimension(0,0)); return b; }
+        private JButton zero() { JButton b = new JButton(); b.setPreferredSize(new Dimension(0,0)); return b; }
         @Override protected void paintThumb(Graphics g, JComponent c, Rectangle r) {
-            Graphics2D g2 = (Graphics2D)g.create();
+            Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setColor(thumbColor);
             g2.fillRoundRect(r.x+1, r.y+1, r.width-2, r.height-2, 6, 6);
