@@ -40,7 +40,7 @@ public class DSAGUI extends JFrame {
     private JTextArea verifyMessageInput, verifySignatureInput, verifyPublicKeyDisplay;
     private JTextArea instructionArea;
 
-    private JButton generateKeysButton, randomKeysButton, saveKeyButton;
+    private JButton generateKeysButton, randomKeysButton, saveKeyButton, applyKeyButton, recalcYButton;
     private JButton signMessageButton;
     private JButton loadMessageButton, saveMessageButton, saveSignatureButton;
     private JButton verifyButton;
@@ -234,14 +234,17 @@ public class DSAGUI extends JFrame {
 
         generateKeysButton = makeBtn("⚙  Tạo khóa tự động",  BLUE,    BLUE_LIGHT);
         randomKeysButton   = makeBtn("🎲  Khóa ngẫu nhiên",   NEUTRAL, NEUTRAL_DARK);
+        applyKeyButton     = makeBtn("📥  Áp dụng khóa nhập", TEAL,    TEAL_DARK);
         saveKeyButton      = makeBtn("💾  Lưu khóa ra tệp",   TEAL,    TEAL_DARK);
 
         generateKeysButton.addActionListener(e -> handleGenerateKeys());
         randomKeysButton  .addActionListener(e -> handleGenerateKeys());
+        applyKeyButton    .addActionListener(e -> handleApplyEnteredKeys());
         saveKeyButton     .addActionListener(e -> saveKeyPairToFile());
 
         btnRow.add(generateKeysButton);
         btnRow.add(randomKeysButton);
+        btnRow.add(applyKeyButton);
         btnRow.add(saveKeyButton);
 
         tab.add(topRow,  BorderLayout.NORTH);
@@ -251,9 +254,9 @@ public class DSAGUI extends JFrame {
     }
 
     private JPanel buildParamCard() {
-        pDisplay = makeCodeArea(2);
-        qDisplay = makeCodeArea(2);
-        gDisplay = makeCodeArea(2);
+        pDisplay = makeEditableArea(2);
+        qDisplay = makeEditableArea(2);
+        gDisplay = makeEditableArea(2);
 
         JPanel form = new JPanel(new GridLayout(3, 2, 10, 12));
         form.setOpaque(false);
@@ -268,8 +271,8 @@ public class DSAGUI extends JFrame {
     }
 
     private JPanel buildKeyOutputCard() {
-        privateKeyDisplay = makeCodeArea(3);
-        publicKeyDisplay  = makeCodeArea(3);
+        privateKeyDisplay = makeEditableArea(3);
+        publicKeyDisplay  = makeEditableArea(3);
         keySummaryDisplay = makeCodeArea(5);
 
         JPanel form = new JPanel(new GridLayout(3, 2, 10, 12));
@@ -277,7 +280,17 @@ public class DSAGUI extends JFrame {
         form.add(makeFieldLabel("Khóa bí mật (x)"));
         form.add(wrapScroll(privateKeyDisplay));
         form.add(makeFieldLabel("Khóa công khai (y = g^x mod p)"));
-        form.add(wrapScroll(publicKeyDisplay));
+        
+        JPanel yPanel = new JPanel(new BorderLayout(8, 0));
+        yPanel.setOpaque(false);
+        yPanel.add(wrapScroll(publicKeyDisplay), BorderLayout.CENTER);
+        recalcYButton = makeBtn("🔄", NEUTRAL, NEUTRAL_DARK);
+        recalcYButton.setPreferredSize(new Dimension(50, 50));
+        recalcYButton.setFont(new Font("Dialog", Font.BOLD, 14));
+        recalcYButton.addActionListener(e -> handleRecalculateY());
+        yPanel.add(recalcYButton, BorderLayout.EAST);
+        
+        form.add(yPanel);
         form.add(makeFieldLabel("Tóm tắt cặp khóa"));
         form.add(wrapScroll(keySummaryDisplay));
 
@@ -360,7 +373,7 @@ public class DSAGUI extends JFrame {
 
         verifyMessageInput   = makeEditableArea(6);
         verifySignatureInput = makeEditableArea(5);
-        verifyPublicKeyDisplay = makeCodeArea(5);
+        verifyPublicKeyDisplay = makeEditableArea(5);
 
         JPanel center = new JPanel(new GridLayout(3, 1, 0, 14));
         center.setOpaque(false);
@@ -518,12 +531,153 @@ public class DSAGUI extends JFrame {
         }).start();
     }
 
+    private boolean tryLoadEnteredKeyPair() {
+        String xTxt = privateKeyDisplay.getText().trim();
+        String yTxt = publicKeyDisplay.getText().trim();
+        String pTxt = pDisplay.getText().trim();
+        String qTxt = qDisplay.getText().trim();
+        String gTxt = gDisplay.getText().trim();
+
+        if (xTxt.isEmpty() && yTxt.isEmpty()) {
+            return false;
+        }
+
+        DSASignatureParams params;
+        if (!pTxt.isEmpty() && !qTxt.isEmpty() && !gTxt.isEmpty()) {
+            BigInteger p = parseHexInteger(pTxt, "p");
+            BigInteger q = parseHexInteger(qTxt, "q");
+            BigInteger g = parseHexInteger(gTxt, "g");
+            params = new DSASignatureParams(p, q, g);
+        } else if (currentKeyPair != null) {
+            params = currentKeyPair.getParams();
+        } else {
+            JOptionPane.showMessageDialog(this,
+                "Vui lòng nhập tham số p, q, g hoặc tạo khóa trước.",
+                "Thiếu tham số", JOptionPane.WARNING_MESSAGE);
+            return false;
+        }
+
+        if (xTxt.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                "Vui lòng nhập khóa bí mật x để áp dụng cặp khóa.",
+                "Thiếu khóa bí mật", JOptionPane.WARNING_MESSAGE);
+            return false;
+        }
+
+        BigInteger x = parseHexInteger(xTxt, "x");
+        BigInteger y;
+        if (!yTxt.isEmpty()) {
+            y = parseHexInteger(yTxt, "y");
+        } else {
+            y = params.getG().modPow(x, params.getP());
+            publicKeyDisplay.setText(hexWrap(y));
+        }
+
+        DSAKeyPair kp = new DSAKeyPair(x, y, params);
+        currentKeyPair = kp;
+        algorithm.setKeyPair(kp);
+        updateKeySummary(kp);
+        keyStatusLabel.setText("✅ Khóa nhập tay đã được áp dụng.");
+        keyStatusLabel.setForeground(TEAL);
+        if (verifyPublicKeyDisplay != null) {
+            verifyPublicKeyDisplay.setText(hexWrap(y));
+        }
+        return true;
+    }
+
+    private void handleApplyEnteredKeys() {
+        try {
+            if (tryLoadEnteredKeyPair()) {
+                JOptionPane.showMessageDialog(this,
+                    "Đã áp dụng cặp khóa từ bàn phím.",
+                    "Thành công", JOptionPane.INFORMATION_MESSAGE);
+            }
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(this,
+                "Lỗi định dạng khóa: " + ex.getMessage(),
+                "Lỗi", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void handleRecalculateY() {
+        try {
+            String xTxt = privateKeyDisplay.getText().trim();
+            String pTxt = pDisplay.getText().trim();
+            String qTxt = qDisplay.getText().trim();
+            String gTxt = gDisplay.getText().trim();
+
+            if (xTxt.isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                    "Vui lòng nhập khóa bí mật x.",
+                    "Thiếu x", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            if (pTxt.isEmpty() || qTxt.isEmpty() || gTxt.isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                    "Vui lòng nhập đầy đủ tham số p, q, g.",
+                    "Thiếu tham số", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            BigInteger x = parseHexInteger(xTxt, "x");
+            BigInteger p = parseHexInteger(pTxt, "p");
+            BigInteger g = parseHexInteger(gTxt, "g");
+
+            // Tính y = g^x mod p
+            BigInteger y = g.modPow(x, p);
+            publicKeyDisplay.setText(hexWrap(y));
+
+            JOptionPane.showMessageDialog(this,
+                "Đã tính y = g^x mod p thành công.",
+                "Thành công", JOptionPane.INFORMATION_MESSAGE);
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(this,
+                "Lỗi: " + ex.getMessage(),
+                "Lỗi", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void updateKeySummary(DSAKeyPair kp) {
+        DSASignatureParams params = kp.getParams();
+        keySummaryDisplay.setText(
+            "Thuật toán  : DSA (FIPS 186-4)\n" +
+            "Kích thước p: " + params.getP().bitLength() + " bit\n" +
+            "Kích thước q: " + params.getQ().bitLength() + " bit\n" +
+            "Kích thước x: " + kp.getPrivateKey().bitLength() + " bit\n" +
+            "Kích thước y: " + kp.getPublicKey().bitLength()  + " bit\n"
+        );
+    }
+
+    private BigInteger parseHexInteger(String text, String name) {
+        String normalized = text.replace("\r\n", "\n").replace('\r', '\n').trim();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException(name + " không được để trống");
+        }
+        Pattern pattern = Pattern.compile("(?i)\\b" + Pattern.quote(name) + "\\s*=\\s*([0-9A-Fa-f]+)");
+        Matcher matcher = pattern.matcher(normalized);
+        if (matcher.find()) {
+            normalized = matcher.group(1);
+        } else {
+            normalized = normalized.replaceAll("\\s+", "");
+        }
+        if (normalized.startsWith("0x") || normalized.startsWith("0X")) {
+            normalized = normalized.substring(2);
+        }
+        if (normalized.isEmpty() || !normalized.matches("[0-9A-Fa-f]+")) {
+            throw new IllegalArgumentException(name + " phải là chuỗi hex hợp lệ");
+        }
+        return new BigInteger(normalized, 16);
+    }
+
     private void handleSignMessage() {
         if (!algorithm.hasKeyPair()) {
-            JOptionPane.showMessageDialog(this,
-                "Vui lòng tạo cặp khóa trước khi ký!",
-                "Chưa có khóa", JOptionPane.WARNING_MESSAGE);
-            return;
+            if (!tryLoadEnteredKeyPair()) {
+                JOptionPane.showMessageDialog(this,
+                    "Vui lòng tạo hoặc nhập cặp khóa trước khi ký!",
+                    "Chưa có khóa", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
         }
         String msg = messageInput.getText().trim();
         if (msg.isEmpty()) {
@@ -589,18 +743,37 @@ public class DSAGUI extends JFrame {
                 // Parse chữ ký từ text
                 DSASignature sig = DSASignature.deserialize(sigTxt);
 
-                // Nếu chưa có key pair nhưng có public key text → không thể verify
-                // (cần full key pair với params). Dùng key pair hiện tại.
-                if (!algorithm.hasKeyPair()) {
-                    SwingUtilities.invokeLater(() -> {
-                        verifyStatusLabel.setText("❌ Chưa có cặp khóa. Hãy tạo khóa trước.");
-                        verifyStatusLabel.setForeground(DANGER);
-                        verifyButton.setEnabled(true);
-                    });
-                    return;
+                // Parse the public key from the verify tab input.
+                BigInteger publicKey = parseHexInteger(pubTxt, "y");
+                DSAKeyPair verifyKeyPair;
+                DSASignatureParams verifyParams = null;
+                if (algorithm.hasKeyPair() && currentKeyPair != null) {
+                    verifyParams = currentKeyPair.getParams();
+                    if (!currentKeyPair.getPublicKey().equals(publicKey)) {
+                        verifyKeyPair = new DSAKeyPair(BigInteger.ZERO, publicKey, verifyParams);
+                    } else {
+                        verifyKeyPair = currentKeyPair;
+                    }
+                } else {
+                    String pTxt = pDisplay.getText().trim();
+                    String qTxt = qDisplay.getText().trim();
+                    String gTxt = gDisplay.getText().trim();
+                    if (pTxt.isEmpty() || qTxt.isEmpty() || gTxt.isEmpty()) {
+                        SwingUtilities.invokeLater(() -> {
+                            verifyStatusLabel.setText("❌ Cần tham số p, q, g để xác minh bằng khóa nhập.");
+                            verifyStatusLabel.setForeground(DANGER);
+                            verifyButton.setEnabled(true);
+                        });
+                        return;
+                    }
+                    BigInteger p = parseHexInteger(pTxt, "p");
+                    BigInteger q = parseHexInteger(qTxt, "q");
+                    BigInteger g = parseHexInteger(gTxt, "g");
+                    verifyParams = new DSASignatureParams(p, q, g);
+                    verifyKeyPair = new DSAKeyPair(BigInteger.ZERO, publicKey, verifyParams);
                 }
 
-                boolean valid = algorithm.verify(msg, sig);
+                boolean valid = algorithm.verify(msg, sig, verifyKeyPair);
 
                 SwingUtilities.invokeLater(() -> {
                     if (valid) {

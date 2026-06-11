@@ -154,7 +154,24 @@ public class DSASignatureAlgorithm {
         return new BigInteger(1, digest).mod(q);
     }
 
-    // ── Getters ──────────────────────────────────────────────────────────────────
+    // ── Getters / Setters ──────────────────────────────────────────────────────────
     public DSAKeyPair getKeyPair() { return keyPair; }
     public boolean hasKeyPair()   { return keyPair != null; }
+
+    public void setKeyPair(DSAKeyPair keyPair) {
+        this.keyPair = keyPair;
+    }
+
+    public boolean verify(String message, DSASignature signature, DSAKeyPair keyPair)
+            throws Exception {
+        if (keyPair == null)
+            throw new IllegalArgumentException("Khóa công khai để xác minh không được rỗng.");
+        DSAKeyPair previous = this.keyPair;
+        try {
+            this.keyPair = keyPair;
+            return verify(message, signature);
+        } finally {
+            this.keyPair = previous;
+        }
+    }
 }
